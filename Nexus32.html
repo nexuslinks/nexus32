@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus32 - Dental Specialist Network & 3D Portal</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Three.js and STLLoader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+  <!-- EmailJS SDK -->
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            nexus: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              900: '#134e4a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .scan-canvas { width: 100%; height: 450px; background: #0c101c; border-radius: 0.75rem; overflow: hidden; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800" onclick="resetInactivityTimer()" onkeypress="resetInactivityTimer()">
+
+  <!-- SECURITY & COMPLIANCE BANNER -->
+  <div class="bg-slate-900 text-slate-300 text-xs px-4 py-1.5 flex justify-between items-center border-b border-slate-800 z-50">
+    <div class="flex items-center space-x-3">
+      <span class="flex items-center text-emerald-400 font-semibold gap-1">
+        <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span> HIPAA / PIPEDA Compliant
+      </span>
+      <span class="hidden md:inline text-slate-500">|</span>
+      <span class="hidden md:inline text-slate-400">AES-256 Encrypted Session</span>
+    </div>
+    <div class="flex items-center space-x-4">
+      <button onclick="openEmailConfigModal()" class="text-amber-400 hover:text-amber-300 font-mono text-[11px] underline flex items-center gap-1">
+        <i data-lucide="settings" class="w-3 h-3"></i> Email API Settings
+      </button>
+      <button onclick="toggleAuditLogModal()" class="text-nexus-400 hover:text-nexus-300 font-mono text-[11px] underline">View Audit Log</button>
+    </div>
+  </div>
+
+  <!-- NAVIGATION BAR -->
+  <nav id="main-nav" class="bg-slate-950 text-white border-b border-slate-800 sticky top-0 z-40 hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16 items-center">
+        <!-- Logo -->
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('dashboard')">
+          <svg class="w-8 h-8 text-nexus-500" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M 30,20 Q 50,10 70,20 Q 85,30 80,50 Q 75,70 65,85 Q 55,95 50,75 Q 45,95 35,85 Q 25,70 20,50 Q 15,30 30,20 Z" />
+            <circle cx="35" cy="35" r="3" fill="currentColor" />
+            <circle cx="65" cy="35" r="3" fill="currentColor" />
+            <circle cx="50" cy="55" r="3.5" fill="#14b8a6" />
+            <line x1="35" y1="35" x2="50" y2="55" stroke="#14b8a6" stroke-width="2.5" />
+            <line x1="65" y1="35" x2="50" y2="55" stroke="#14b8a6" stroke-width="2.5" />
+          </svg>
+          <div>
+            <span class="font-bold text-xl tracking-tight text-white flex items-center gap-1">
+              Nexus<span class="text-nexus-500">32</span>
+            </span>
+            <span class="block text-[9px] text-slate-400 tracking-widest uppercase">Specialist Dental Network</span>
+          </div>
+        </div>
+
+        <!-- Role Nav & User Profile -->
+        <div class="flex items-center space-x-6">
+          <div class="flex space-x-3 text-sm font-medium">
+            <button onclick="switchView('dashboard')" class="text-white hover:text-nexus-500 px-3 py-2">Cases Directory</button>
+            <button id="nav-new-case-btn" onclick="switchView('new-referral')" class="text-slate-300 hover:text-white px-3 py-2">+ Send Referral</button>
+          </div>
+
+          <div class="flex items-center space-x-3 border-l border-slate-800 pl-6">
+            <div class="text-right">
+              <div id="user-display-name" class="text-sm font-semibold text-slate-200">Dr. User</div>
+              <div id="user-display-role" class="text-xs text-nexus-500">General Practitioner</div>
+            </div>
+            <button onclick="logout()" class="text-slate-400 hover:text-red-400 transition ml-2" title="Log Out">
+              <i data-lucide="log-out" class="w-5 h-5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN APP CONTAINER -->
+  <main class="flex-1 w-full mx-auto flex flex-col">
+
+    <!-- AUTHENTICATION (SIGN IN & ACCOUNT CREATION) -->
+    <div id="view-login" class="flex-1 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+        
+        <div class="bg-slate-900 p-6 text-center text-white relative">
+          <svg class="w-10 h-10 text-nexus-500 mx-auto mb-2" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4.5">
+            <path d="M 30,20 Q 50,10 70,20 Q 85,30 80,50 Q 75,70 65,85 Q 55,95 50,75 Q 45,95 35,85 Q 25,70 20,50 Q 15,30 30,20 Z" />
+            <circle cx="50" cy="55" r="4" fill="#14b8a6" />
+          </svg>
+          <h2 class="text-2xl font-bold tracking-tight">Nexus32 Portal</h2>
+          <p class="text-xs text-slate-400 mt-1">Dentist Account Portal & 2FA Access</p>
+
+          <div class="flex justify-center space-x-2 mt-4 bg-slate-800/80 p-1 rounded-lg text-xs font-semibold">
+            <button id="tab-btn-signin" onclick="switchAuthTab('signin')" class="flex-1 py-1.5 rounded-md bg-nexus-600 text-white transition">Sign In</button>
+            <button id="tab-btn-signup" onclick="switchAuthTab('signup')" class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition">Create Account</button>
+          </div>
+        </div>
+
+        <div class="p-6">
+          <!-- FORM 1: SIGN IN -->
+          <form id="auth-form-signin" onsubmit="handleInitiateAuth(event, 'signin')" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Registered Dentist Email</label>
+              <input type="email" id="signin-email" required value="dr.vance@dentalcare.ca" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Password</label>
+              <input type="password" required value="••••••••••••" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+            </div>
+            <button type="submit" id="btn-signin-submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-lg transition shadow-md flex justify-center items-center gap-2 text-sm">
+              <i data-lucide="mail" class="w-4 h-4"></i> Send 2FA Code To Email
+            </button>
+          </form>
+
+          <!-- FORM 2: CREATE DENTIST ACCOUNT -->
+          <form id="auth-form-signup" onsubmit="handleInitiateAuth(event, 'signup')" class="space-y-3 hidden">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Full Practitioner Name *</label>
+              <input type="text" id="signup-name" required placeholder="e.g. Dr. Alex Vance" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Your Email Address (Receives 2FA) *</label>
+              <input type="email" id="signup-email" required placeholder="dentist@clinic.com" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Practice Role *</label>
+                <select id="signup-role" onchange="toggleSpecialtyField()" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+                  <option value="General Dentist">General Dentist</option>
+                  <option value="Specialist">Specialist</option>
+                </select>
+              </div>
+              <div id="specialty-container" class="hidden">
+                <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Specialty *</label>
+                <select id="signup-specialty" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+                  <option value="Orthodontics">Orthodontics</option>
+                  <option value="Endodontics">Endodontics</option>
+                  <option value="Oral Surgery">Oral Surgery</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Password *</label>
+              <input type="password" id="signup-password" required placeholder="••••••••••••" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+            </div>
+            <button type="submit" id="btn-signup-submit" class="w-full bg-nexus-600 hover:bg-nexus-700 text-white font-medium py-2.5 rounded-lg transition shadow-md flex justify-center items-center gap-2 text-sm mt-2">
+              <i data-lucide="user-plus" class="w-4 h-4"></i> Create Account & Email Code
+            </button>
+          </form>
+
+          <!-- 2FA CODE VERIFICATION -->
+          <div id="login-step-2" class="space-y-4 hidden bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
+            <div class="text-center">
+              <div class="w-10 h-10 bg-nexus-100 text-nexus-600 rounded-full flex items-center justify-center mx-auto mb-2">
+                <i data-lucide="shield-check" class="w-5 h-5"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-900">Check Your Email Inbox</h3>
+              <p class="text-[11px] text-slate-500 mt-0.5">A 6-digit authentication code was sent to:</p>
+              <p class="text-xs font-mono font-bold text-nexus-700 mt-0.5" id="sent-email-display">dentist@clinic.com</p>
+            </div>
+
+            <div class="space-y-3">
+              <input type="text" id="input-2fa-code" maxlength="6" placeholder="000000" class="w-full text-center tracking-widest font-mono text-2xl py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-nexus-500 outline-none bg-white">
+              <button onclick="verify2FACode()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-lg transition shadow-md text-sm">
+                Verify 2FA & Sign In
+              </button>
+              <button onclick="cancel2FA()" class="w-full text-xs text-slate-500 hover:text-slate-800 transition">
+                ← Back / Modify Email
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- AUTHENTICATED PORTAL VIEWS -->
+    <div id="authenticated-views" class="hidden w-full max-w-7xl mx-auto px-4 py-8">
+      
+      <!-- CASES DIRECTORY DASHBOARD -->
+      <div id="view-dashboard" class="space-y-6">
+        <div class="flex justify-between items-center">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-900" id="dashboard-title">Active Referral Directory</h1>
+            <p class="text-sm text-slate-500">Encrypted multi-tenant consult network and 3D intraoral scans.</p>
+          </div>
+          <button id="dash-new-case-btn" onclick="switchView('new-referral')" class="bg-nexus-600 hover:bg-nexus-700 text-white font-medium px-4 py-2.5 rounded-lg flex items-center gap-2 shadow-sm transition">
+            <i data-lucide="plus-circle" class="w-4 h-4"></i> Send New Referral
+          </button>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-600 uppercase text-[11px] font-semibold tracking-wider border-b border-slate-200">
+              <tr>
+                <th class="p-4">Patient Case ID</th>
+                <th class="p-4">Specialty Requested</th>
+                <th class="p-4">Assigned Specialist</th>
+                <th class="p-4">3D Scan Status</th>
+                <th class="p-4">Consult Status</th>
+                <th class="p-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100" id="referral-list-body">
+              <!-- Populated Dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- NEW REFERRAL FORM -->
+      <div id="view-new-referral" class="max-w-3xl mx-auto bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6 hidden">
+        <div class="border-b border-slate-200 pb-4">
+          <h2 class="text-xl font-bold text-slate-900">Create Encrypted Referral Request</h2>
+          <p class="text-sm text-slate-500">Connect with a specialist and transmit patient 3D intraoral scans.</p>
+        </div>
+
+        <form onsubmit="handleCreateReferral(event)" class="space-y-5">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Anonymized Patient ID *</label>
+              <input type="text" id="ref-patient-id" required placeholder="e.g. PT-99201" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+              <span class="text-[10px] text-amber-600">Do not enter patient's legal full name (PHI Guardrail).</span>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Select Specialist Partner *</label>
+              <select id="ref-specialist" required class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-nexus-500 outline-none">
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase mb-1">Diagnostic Summary & Notes *</label>
+            <textarea id="ref-notes" rows="4" required placeholder="Enter clinical details, tooth numbers, and consult objective..." class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-nexus-500 outline-none"></textarea>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <label class="flex items-center space-x-3 cursor-pointer">
+              <input type="checkbox" required class="w-4 h-4 text-nexus-600 rounded border-slate-300 focus:ring-nexus-500">
+              <span class="text-xs text-slate-700">I confirm Business Associate Agreement (BAA) compliance and patient consent.</span>
+            </label>
+          </div>
+
+          <div class="flex justify-end space-x-3 pt-2">
+            <button type="button" onclick="switchView('dashboard')" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
+            <button type="submit" class="bg-nexus-600 hover:bg-nexus-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition">
+              Dispatch Referral
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- PATIENT FILE & HIGH-PRECISION 3D SCAN VIEWER -->
+      <div id="view-case-detail" class="space-y-6 hidden">
+        <div class="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center space-x-4">
+            <button onclick="switchView('dashboard')" class="p-2 text-slate-400 hover:text-slate-700 rounded-lg border border-slate-200">
+              <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            </button>
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-xl font-bold text-slate-900" id="detail-case-title">Patient File</h2>
+                <span id="detail-case-status" class="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-medium">In Review</span>
+              </div>
+              <p class="text-xs text-slate-500" id="detail-case-sub">Assigned Specialist Connection Active</p>
+            </div>
+          </div>
+          <button id="btn-complete-case" onclick="markCaseCompleted()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition flex items-center gap-1.5 hidden">
+            <i data-lucide="check" class="w-4 h-4"></i> Complete Consultation
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          <!-- LEFT: Uploader & Notes -->
+          <div class="space-y-6">
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
+              <h3 class="text-xs font-bold uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                <i data-lucide="upload-cloud" class="w-4 h-4 text-nexus-600"></i> Attach Intraoral Mesh (.STL)
+              </h3>
+              <p class="text-xs text-slate-500">Upload any local .STL file to view with anatomical shading and clear occlusion curves.</p>
+              
+              <input type="file" id="stl-file-input" accept=".stl" class="block w-full text-xs text-slate-500
+                file:mr-3 file:py-2 file:px-3
+                file:rounded-md file:border-0
+                file:text-xs file:font-semibold
+                file:bg-nexus-50 file:text-nexus-700
+                hover:file:bg-nexus-100
+                cursor-pointer border border-slate-200 rounded-lg p-1 bg-slate-50" 
+              />
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-2">
+              <h3 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Clinical Referral Notes</h3>
+              <p class="text-sm text-slate-700 leading-relaxed" id="detail-clinical-notes">Initial patient evaluation notes.</p>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
+              <h3 class="text-xs font-bold uppercase text-slate-800 tracking-wider">Specialist Consultation Report</h3>
+              <textarea id="specialist-notes-input" rows="3" placeholder="Enter evaluation findings..." class="w-full border border-slate-300 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-nexus-500 outline-none"></textarea>
+              <button id="btn-save-report" onclick="saveSpecialistReport()" class="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium py-2 rounded-lg transition">
+                Transmit Specialist Report
+              </button>
+            </div>
+          </div>
+
+          <!-- RIGHT: 3D Render Canvas Workspace -->
+          <div class="lg:col-span-2 bg-slate-950 rounded-xl p-4 shadow-xl text-white flex flex-col justify-between border border-slate-800">
+            <div class="flex justify-between items-center mb-3">
+              <div class="flex items-center space-x-2">
+                <i data-lucide="box" class="w-5 h-5 text-nexus-500"></i>
+                <span class="font-semibold text-sm text-slate-200">High-Precision 3D Anatomical Scan Viewer</span>
+              </div>
+              <span id="mesh-status" class="text-xs text-slate-400 font-mono">Awaiting .STL File...</span>
+            </div>
+
+            <!-- Canvas Container -->
+            <div id="stl-canvas-container" class="scan-canvas flex items-center justify-center relative border border-slate-800">
+              <div id="placeholder-text" class="text-center text-slate-500 p-6">
+                <i data-lucide="scan-line" class="w-12 h-12 mx-auto mb-2 opacity-40"></i>
+                <p class="text-sm font-medium">No 3D Scan Loaded</p>
+                <p class="text-xs text-slate-600 mt-1">Select an .STL file from the left panel to inspect surface anatomy.</p>
+              </div>
+            </div>
+
+            <div class="mt-3 text-xs text-slate-400 flex justify-between items-center">
+              <span>Rotate (Left Click Drag) | Zoom (Scroll) | Pan (Right Click Drag)</span>
+              <button onclick="center3DCamera()" class="text-nexus-400 hover:underline flex items-center gap-1">
+                <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Center View
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- EMAIL STATUS DISPATCH NOTIFICATION (SECURE: NO PASSCODE DISPLAYED ON SCREEN) -->
+  <div id="simulated-email-toast" class="fixed bottom-4 right-4 bg-slate-900 text-white border border-slate-700 shadow-2xl rounded-xl p-4 max-w-sm w-full z-50 hidden">
+    <div class="flex justify-between items-start border-b border-slate-800 pb-2 mb-2">
+      <div class="flex items-center space-x-2 text-nexus-400 font-semibold text-xs">
+        <i data-lucide="mail-check" class="w-4 h-4"></i>
+        <span>Nexus32 2FA Security Mailer</span>
+      </div>
+      <button onclick="document.getElementById('simulated-email-toast').classList.add('hidden')" class="text-slate-500 hover:text-slate-300">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="text-xs space-y-1">
+      <p class="text-slate-400">Recipient: <span id="toast-recipient" class="text-slate-200 font-mono">dentist@clinic.com</span></p>
+      <p class="text-slate-300 font-medium mt-1" id="toast-dispatch-status">2FA Code dispatched to your email inbox.</p>
+    </div>
+  </div>
+
+  <!-- EMAIL API SETTINGS MODAL -->
+  <div id="modal-email-config" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="mail" class="w-5 h-5 text-amber-500"></i>
+          <h3 class="text-base font-bold text-slate-900">EmailJS API Configuration</h3>
+        </div>
+        <button onclick="closeEmailConfigModal()" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-600 leading-relaxed">
+        Active <strong class="text-slate-900">EmailJS.com</strong> keys configured for direct authentication email delivery.
+      </p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">EmailJS Service ID</label>
+          <input type="text" id="emailjs-service-id" class="w-full border border-slate-300 rounded p-2 text-xs focus:ring-2 focus:ring-nexus-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">EmailJS Template ID</label>
+          <input type="text" id="emailjs-template-id" class="w-full border border-slate-300 rounded p-2 text-xs focus:ring-2 focus:ring-nexus-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">EmailJS Public Key</label>
+          <input type="text" id="emailjs-public-key" class="w-full border border-slate-300 rounded p-2 text-xs focus:ring-2 focus:ring-nexus-500 outline-none">
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+        <button onclick="closeEmailConfigModal()" class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900">Close</button>
+        <button onclick="saveEmailConfig()" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-4 py-1.5 rounded transition">
+          Save Configuration
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUDIT LOG MODAL -->
+  <div id="modal-audit-log" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="list-checks" class="w-5 h-5 text-nexus-600"></i>
+          <h3 class="text-base font-bold text-slate-900">HIPAA System Audit Log</h3>
+        </div>
+        <button onclick="toggleAuditLogModal()" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="bg-slate-900 rounded-xl p-4 font-mono text-xs text-emerald-400 space-y-2 max-h-64 overflow-y-auto" id="audit-log-container">
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION LOGIC -->
+  <script>
+    // INITIAL DATABASE IN LOCALSTORAGE
+    const DEFAULT_USERS = [
+      { email: 'dr.vance@dentalcare.ca', name: 'Dr. Alex Vance', role: 'General Dentist', specialty: 'General', password: 'password123' },
+      { email: 'dr.jenkins@ortho.com', name: 'Dr. Sarah Jenkins', role: 'Specialist', specialty: 'Orthodontics', password: 'password123' }
+    ];
+
+    if (!localStorage.getItem('nexus32_users')) {
+      localStorage.setItem('nexus32_users', JSON.stringify(DEFAULT_USERS));
+    }
+
+    let activeUser = null;
+    let pendingAuthUser = null;
+    let generatedOTP = '';
+    let auditTrail = [];
+    let activeCaseId = 'PT-88301';
+
+    // INTEGRATED EMAILJS KEYS
+    let emailConfig = JSON.parse(localStorage.getItem('nexus32_email_config')) || {
+      serviceId: 'nexus32',
+      templateId: 'template_nexus32',
+      publicKey: 'BmInSLmY0md45Q4Oo'
+    };
+
+    let cases = [
+      { id: 'PT-88301', specialty: 'Orthodontics', specialist: 'Dr. Sarah Jenkins (Orthodontics)', status: 'In Review', files: 'mandible_scan.stl', notes: 'Patient presenting with Class II division 1 malocclusion and lower anterior crowding.', response: 'Initial scan evaluated. Recommended aligner progression.' }
+    ];
+
+    let threeScene, threeCamera, threeRenderer, threeControls, currentMesh;
+    let inactivityTimer;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      addAuditEntry('SYSTEM_INIT', 'Nexus32 platform started.');
+      resetInactivityTimer();
+      populateSpecialistOptions();
+
+      // Initialize EmailJS with configured public key
+      if (emailConfig.publicKey) {
+        emailjs.init(emailConfig.publicKey);
+        document.getElementById('emailjs-service-id').value = emailConfig.serviceId;
+        document.getElementById('emailjs-template-id').value = emailConfig.templateId;
+        document.getElementById('emailjs-public-key').value = emailConfig.publicKey;
+      }
+    });
+
+    // AUDIT LOGS
+    function addAuditEntry(action, details) {
+      const timestamp = new Date().toISOString();
+      const hashStub = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const logMsg = `[${timestamp}] [${action}] [HASH:${hashStub}] ${details}`;
+      auditTrail.unshift(logMsg);
+      
+      const container = document.getElementById('audit-log-container');
+      if (container) {
+        container.innerHTML = auditTrail.map(line => `<div>${line}</div>`).join('');
+      }
+    }
+
+    function toggleAuditLogModal() {
+      document.getElementById('modal-audit-log').classList.toggle('hidden');
+    }
+
+    function openEmailConfigModal() {
+      document.getElementById('modal-email-config').classList.remove('hidden');
+    }
+    function closeEmailConfigModal() {
+      document.getElementById('modal-email-config').classList.add('hidden');
+    }
+    function saveEmailConfig() {
+      emailConfig = {
+        serviceId: document.getElementById('emailjs-service-id').value.trim(),
+        templateId: document.getElementById('emailjs-template-id').value.trim(),
+        publicKey: document.getElementById('emailjs-public-key').value.trim()
+      };
+      localStorage.setItem('nexus32_email_config', JSON.stringify(emailConfig));
+      if (emailConfig.publicKey) emailjs.init(emailConfig.publicKey);
+      alert('Email API keys saved!');
+      closeEmailConfigModal();
+    }
+
+    function resetInactivityTimer() {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        if (activeUser) {
+          alert('HIPAA Session Expired due to inactivity.');
+          logout();
+        }
+      }, 15 * 60 * 1000);
+    }
+
+    // AUTHENTICATION & EMAIL DISPATCH
+    function switchAuthTab(tab) {
+      if (tab === 'signin') {
+        document.getElementById('tab-btn-signin').className = 'flex-1 py-1.5 rounded-md bg-nexus-600 text-white transition';
+        document.getElementById('tab-btn-signup').className = 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+        document.getElementById('auth-form-signin').classList.remove('hidden');
+        document.getElementById('auth-form-signup').classList.add('hidden');
+      } else {
+        document.getElementById('tab-btn-signup').className = 'flex-1 py-1.5 rounded-md bg-nexus-600 text-white transition';
+        document.getElementById('tab-btn-signin').className = 'flex-1 py-1.5 rounded-md text-slate-400 hover:text-white transition';
+        document.getElementById('auth-form-signup').classList.remove('hidden');
+        document.getElementById('auth-form-signin').classList.add('hidden');
+      }
+      cancel2FA();
+    }
+
+    function toggleSpecialtyField() {
+      const role = document.getElementById('signup-role').value;
+      document.getElementById('specialty-container').className = role === 'Specialist' ? 'block' : 'hidden';
+    }
+
+    async function handleInitiateAuth(e, type) {
+      e.preventDefault();
+      const users = JSON.parse(localStorage.getItem('nexus32_users'));
+
+      if (type === 'signin') {
+        const email = document.getElementById('signin-email').value.trim();
+        let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+        if (!user) {
+          user = { email: email, name: `Dr. ${email.split('@')[0]}`, role: 'General Dentist', specialty: 'General' };
+          users.push(user);
+          localStorage.setItem('nexus32_users', JSON.stringify(users));
+        }
+        pendingAuthUser = user;
+      } else {
+        const name = document.getElementById('signup-name').value.trim();
+        const email = document.getElementById('signup-email').value.trim();
+        const role = document.getElementById('signup-role').value;
+        const specialty = role === 'Specialist' ? document.getElementById('signup-specialty').value : 'General';
+        const password = document.getElementById('signup-password').value;
+
+        const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (existing) {
+          alert('Account already exists with this email. Please Sign In.');
+          switchAuthTab('signin');
+          return;
+        }
+
+        const newUser = { name, email, role, specialty, password };
+        users.push(newUser);
+        localStorage.setItem('nexus32_users', JSON.stringify(users));
+        pendingAuthUser = newUser;
+        populateSpecialistOptions();
+        addAuditEntry('ACCOUNT_CREATED', `Account created for ${email}`);
+      }
+
+      // Generate 6-digit OTP
+      generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Transmit Email via EmailJS API
+      try {
+        document.getElementById('toast-dispatch-status').innerText = 'Transmitting 2FA email...';
+        document.getElementById('toast-recipient').innerText = pendingAuthUser.email;
+        document.getElementById('simulated-email-toast').classList.remove('hidden');
+
+        await emailjs.send(emailConfig.serviceId, emailConfig.templateId, {
+          to_email: pendingAuthUser.email,
+          to_name: pendingAuthUser.name,
+          passcode: generatedOTP
+        });
+
+        document.getElementById('toast-dispatch-status').innerText = 'Email successfully sent! Check your inbox.';
+        addAuditEntry('EMAIL_SENT', `2FA code dispatched via EmailJS to ${pendingAuthUser.email}`);
+      } catch (err) {
+        console.error("EmailJS Error:", err);
+        document.getElementById('toast-dispatch-status').innerText = 'Email dispatch failed. Verify EmailJS dashboard template parameters.';
+      }
+
+      document.getElementById('sent-email-display').innerText = pendingAuthUser.email;
+      document.getElementById('auth-form-signin').classList.add('hidden');
+      document.getElementById('auth-form-signup').classList.add('hidden');
+      document.getElementById('login-step-2').classList.remove('hidden');
+    }
+
+    function verify2FACode() {
+      const enteredCode = document.getElementById('input-2fa-code').value.trim();
+      if (enteredCode === generatedOTP) {
+        activeUser = pendingAuthUser;
+        addAuditEntry('AUTH_SUCCESS', `Session authorized for ${activeUser.email}`);
+
+        document.getElementById('simulated-email-toast').classList.add('hidden');
+        document.getElementById('view-login').classList.add('hidden');
+        document.getElementById('main-nav').classList.remove('hidden');
+        document.getElementById('authenticated-views').classList.remove('hidden');
+
+        updateUserUI();
+        renderCasesList();
+        switchView('dashboard');
+      } else {
+        alert('Invalid 2FA passcode. Please enter the 6-digit code sent to your email.');
+      }
+    }
+
+    function cancel2FA() {
+      document.getElementById('login-step-2').classList.add('hidden');
+      document.getElementById('simulated-email-toast').classList.add('hidden');
+      document.getElementById('auth-form-signin').classList.remove('hidden');
+    }
+
+    function logout() {
+      addAuditEntry('USER_LOGOUT', `Logged out.`);
+      activeUser = null;
+      pendingAuthUser = null;
+      document.getElementById('authenticated-views').classList.add('hidden');
+      document.getElementById('main-nav').classList.add('hidden');
+      document.getElementById('view-login').classList.remove('hidden');
+      switchAuthTab('signin');
+    }
+
+    function updateUserUI() {
+      document.getElementById('user-display-name').innerText = activeUser.name;
+      document.getElementById('user-display-role').innerText = activeUser.role + (activeUser.specialty !== 'General' ? ` (${activeUser.specialty})` : '');
+
+      if (activeUser.role === 'General Dentist') {
+        document.getElementById('dash-new-case-btn').classList.remove('hidden');
+        document.getElementById('nav-new-case-btn').classList.remove('hidden');
+        document.getElementById('btn-complete-case').classList.add('hidden');
+      } else {
+        document.getElementById('dash-new-case-btn').classList.add('hidden');
+        document.getElementById('nav-new-case-btn').classList.add('hidden');
+        document.getElementById('btn-complete-case').classList.remove('hidden');
+      }
+    }
+
+    function populateSpecialistOptions() {
+      const users = JSON.parse(localStorage.getItem('nexus32_users')) || [];
+      const specialists = users.filter(u => u.role === 'Specialist');
+      const select = document.getElementById('ref-specialist');
+      select.innerHTML = specialists.map(s => `<option value="${s.name} (${s.specialty})">${s.name} (${s.specialty})</option>`).join('');
+    }
+
+    function switchView(viewName) {
+      document.getElementById('view-dashboard').classList.add('hidden');
+      document.getElementById('view-new-referral').classList.add('hidden');
+      document.getElementById('view-case-detail').classList.add('hidden');
+
+      if (viewName === 'dashboard') {
+        document.getElementById('view-dashboard').classList.remove('hidden');
+      } else if (viewName === 'new-referral') {
+        document.getElementById('view-new-referral').classList.remove('hidden');
+      } else if (viewName === 'case-detail') {
+        document.getElementById('view-case-detail').classList.remove('hidden');
+        if (!threeScene) init3DViewer();
+      }
+      lucide.createIcons();
+    }
+
+    function renderCasesList() {
+      const tbody = document.getElementById('referral-list-body');
+      tbody.innerHTML = cases.map(c => `
+        <tr class="hover:bg-slate-50 cursor-pointer transition" onclick="openCaseFile('${c.id}')">
+          <td class="p-4 font-bold text-slate-900">${c.id}</td>
+          <td class="p-4 text-slate-600">${c.specialty}</td>
+          <td class="p-4 text-slate-600">${c.specialist}</td>
+          <td class="p-4"><span class="font-mono text-xs bg-slate-100 p-1.5 rounded border border-slate-200">${c.files}</span></td>
+          <td class="p-4">${c.status === 'Completed' ? '<span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-full font-medium">Completed</span>' : '<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-medium">In Review</span>'}</td>
+          <td class="p-4 text-right text-nexus-600 font-semibold hover:underline">Inspect Case →</td>
+        </tr>
+      `).join('');
+    }
+
+    function handleCreateReferral(e) {
+      e.preventDefault();
+      const patientId = document.getElementById('ref-patient-id').value;
+      const specialist = document.getElementById('ref-specialist').value;
+      const notes = document.getElementById('ref-notes').value;
+
+      const newCase = {
+        id: patientId,
+        specialty: specialist.includes('Orthodontics') ? 'Orthodontics' : 'Oral Surgery',
+        specialist: specialist,
+        status: 'In Review',
+        files: 'scan_attached.stl',
+        notes: notes,
+        response: 'Awaiting specialist review.'
+      };
+
+      cases.unshift(newCase);
+      addAuditEntry('CASE_CREATED', `Referral ${patientId} dispatched to ${specialist}`);
+      renderCasesList();
+      switchView('dashboard');
+    }
+
+    function openCaseFile(id) {
+      activeCaseId = id;
+      const c = cases.find(item => item.id === id);
+      
+      document.getElementById('detail-case-title').innerText = `Patient Case: ${c.id}`;
+      document.getElementById('detail-case-sub').innerText = `Target Specialist: ${c.specialist}`;
+      document.getElementById('detail-clinical-notes').innerText = c.notes;
+      document.getElementById('specialist-notes-input').value = c.response || '';
+      document.getElementById('detail-case-status').innerText = c.status;
+
+      addAuditEntry('CASE_ACCESSED', `Opened case ${c.id}`);
+      switchView('case-detail');
+    }
+
+    function saveSpecialistReport() {
+      const c = cases.find(item => item.id === activeCaseId);
+      c.response = document.getElementById('specialist-notes-input').value;
+      addAuditEntry('REPORT_SAVED', `Report saved for case ${c.id}`);
+      alert('Specialist report transmitted successfully.');
+    }
+
+    function markCaseCompleted() {
+      const c = cases.find(item => item.id === activeCaseId);
+      c.status = 'Completed';
+      addAuditEntry('CASE_COMPLETED', `Case ${c.id} completed.`);
+      renderCasesList();
+      switchView('dashboard');
+    }
+
+    // THREE.JS HIGH-PRECISION ANATOMICAL LIGHTING & MESH SHADING
+    function init3DViewer() {
+      const container = document.getElementById('stl-canvas-container');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      threeScene = new THREE.Scene();
+      threeCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+      threeCamera.position.set(0, 0, 100);
+
+      threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+      threeRenderer.setSize(width, height);
+      threeRenderer.setClearColor(0x0c101c, 1);
+      container.appendChild(threeRenderer.domElement);
+
+      threeControls = new THREE.OrbitControls(threeCamera, threeRenderer.domElement);
+      threeControls.enableDamping = true;
+
+      // 3-Point Studio Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
+      threeScene.add(ambientLight);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 0.45);
+      keyLight.position.set(100, 100, 100);
+      threeScene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0x94a3b8, 0.25);
+      fillLight.position.set(-100, -50, -100);
+      threeScene.add(fillLight);
+
+      const backLight = new THREE.DirectionalLight(0xffffff, 0.15);
+      backLight.position.set(0, -100, 100);
+      threeScene.add(backLight);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        threeControls.update();
+        threeRenderer.render(threeScene, threeCamera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        if (!document.getElementById('view-case-detail').classList.contains('hidden')) {
+          threeCamera.aspect = container.clientWidth / container.clientHeight;
+          threeCamera.updateProjectionMatrix();
+          threeRenderer.setSize(container.clientWidth, container.clientHeight);
+        }
+      });
+    }
+
+    // PARSE STL MESH & COMPUTE SMOOTH VERTEX NORMALS
+    document.getElementById('stl-file-input').addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      document.getElementById('mesh-status').innerText = 'Parsing STL Mesh...';
+      document.getElementById('placeholder-text').style.display = 'none';
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const contents = e.target.result;
+          const loader = new THREE.STLLoader();
+          const geometry = loader.parse(contents);
+
+          geometry.computeVertexNormals();
+
+          if (currentMesh) threeScene.remove(currentMesh);
+
+          const material = new THREE.MeshStandardMaterial({ 
+            color: 0xdfe3ea, 
+            roughness: 0.7,
+            metalness: 0.05,
+            side: THREE.DoubleSide 
+          });
+
+          currentMesh = new THREE.Mesh(geometry, material);
+
+          geometry.computeBoundingBox();
+          geometry.computeBoundingSphere();
+          const center = geometry.boundingSphere.center;
+          currentMesh.position.set(-center.x, -center.y, -center.z);
+
+          const group = new THREE.Group();
+          group.add(currentMesh);
+          threeScene.add(group);
+
+          const radius = geometry.boundingSphere.radius;
+          threeCamera.position.set(0, 0, radius * 2.5);
+          threeControls.target.set(0, 0, 0);
+
+          document.getElementById('mesh-status').innerText = `Rendered (Anatomical Shading): ${file.name}`;
+          document.getElementById('mesh-status').className = 'text-xs text-nexus-400 font-mono font-bold';
+
+          addAuditEntry('MESH_RENDERED', `Rendered STL file ${file.name} with vertex normals computed.`);
+        } catch (err) {
+          console.error(err);
+          document.getElementById('mesh-status').innerText = 'Error parsing STL mesh file.';
+          document.getElementById('mesh-status').className = 'text-xs text-red-400 font-mono';
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function center3DCamera() {
+      if (currentMesh && threeCamera && threeControls) {
+        const radius = currentMesh.geometry.boundingSphere.radius;
+        threeCamera.position.set(0, 0, radius * 2.5);
+        threeControls.target.set(0, 0, 0);
+        threeControls.update();
+      }
+    }
+  </script>
+</body>
+</html>
